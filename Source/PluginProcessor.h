@@ -30,6 +30,18 @@ public:
     void getStateInformation(juce::MemoryBlock& destData) override;
     void setStateInformation(const void* data, int sizeInBytes) override;
 
+    juce::AudioProcessorValueTreeState apvts;
+
 private:
+    static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
+
+    float envelope    = 0.0f;
+    float attackCoeff = 0.0f;
+    float releaseCoeff = 0.0f;
+
+    static constexpr float kThresholdDb = -18.0f;
+    static constexpr float kAttackMs    =  10.0f;
+    static constexpr float kReleaseMs   = 100.0f;
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(DumbCompressorProcessor)
 };

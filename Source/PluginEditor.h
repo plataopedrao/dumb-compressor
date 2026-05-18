@@ -15,5 +15,9 @@ public:
 private:
     DumbCompressorProcessor& audioProcessor;
 
+    juce::Slider ratioKnob;
+    juce::Label  ratioLabel;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> ratioAttachment;
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(DumbCompressorEditor)
 };
