@@ -47,13 +47,26 @@ C:\projetos\dumb compressor\
   ```
 - **Ratio = Off (0)**: bypass da compressão; output level ainda aplicado
 
-## Regras de Build
+## Regras de Build e Git
+
+> **REGRA OBRIGATÓRIA**: Toda e qualquer alteração no projeto — código, configuração,  
+> documentação ou qualquer outro arquivo — deve ser commitada e enviada ao GitHub  
+> imediatamente após a alteração. Nenhuma mudança fica só local.
+
 1. **Compilar sempre em**: `C:\projetos\dumb compressor\`
 2. Executar: `build.bat` (configura MSVC x64, roda cmake + ninja, Release)
 3. **Após build**, copiar automaticamente o VST3 para:  
    `C:\Program Files\Common Files\VST3\Peposoft\Dumb Compressor.vst3`  
    *(requer UAC — uma janela de elevação aparece)*
-4. Commitar e fazer push para o GitHub após toda alteração
+4. **Após toda alteração**: commitar e fazer push para o GitHub
+   ```
+   git add <arquivos alterados>
+   git commit -m "descrição da mudança"
+   git push
+   ```
+   - Email do commit: `pedro@woliveira.net`
+   - Usuário: `plataopedrao`
+   - Branch: `master`
 
 ## Repositório GitHub
 - URL: https://github.com/plataopedrao/dumb-compressor
