@@ -22,7 +22,7 @@ juce_add_plugin(DumbCompressor
     COPY_PLUGIN_AFTER_BUILD FALSE
     PLUGIN_MANUFACTURER_CODE Ycmp
     PLUGIN_CODE             Dcmp
-    FORMATS                 VST3
+    FORMATS                 VST3 Standalone
     PRODUCT_NAME            "Dumb Compressor")
 
 juce_generate_juce_header(DumbCompressor)
