@@ -1,15 +1,21 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 
-static const float kRatioValues[] = { 0.0f, 4.0f, 8.0f, 12.0f, 20.0f };
+static const float kRatioValues[]  = { 0.0f, 4.0f, 8.0f, 12.0f, 20.0f };
+static const float kOutputGains[]  = { 0.0f, 0.25f, 0.50f, 0.75f, 1.0f };
 
 juce::AudioProcessorValueTreeState::ParameterLayout DumbCompressorProcessor::createParameterLayout()
 {
     juce::AudioProcessorValueTreeState::ParameterLayout layout;
+
     layout.add(std::make_unique<juce::AudioParameterFloat>(
         "ratioIndex", "Ratio",
-        juce::NormalisableRange<float>(0.0f, 4.0f, 1.0f),
-        0.0f));
+        juce::NormalisableRange<float>(0.0f, 4.0f, 1.0f), 1.0f));
+
+    layout.add(std::make_unique<juce::AudioParameterFloat>(
+        "outputLevel", "Output",
+        juce::NormalisableRange<float>(0.0f, 4.0f, 1.0f), 4.0f));   // default 100%
+
     return layout;
 }
 
@@ -36,7 +42,8 @@ void DumbCompressorProcessor::changeProgramName(int, const juce::String&)   {}
 
 void DumbCompressorProcessor::prepareToPlay(double sampleRate, int)
 {
-    envelope     = 0.0f;
+    envelopeL = envelopeR = 0.0f;
+    // Coefficient formula: e^(-1 / (sampleRate * time_s))
     attackCoeff  = std::exp(-1.0f / (float(sampleRate) * kAttackMs  * 0.001f));
     releaseCoeff = std::exp(-1.0f / (float(sampleRate) * kReleaseMs * 0.001f));
 }
@@ -46,35 +53,61 @@ void DumbCompressorProcessor::releaseResources() {}
 void DumbCompressorProcessor::processBlock(juce::AudioBuffer<float>& buffer,
                                            juce::MidiBuffer&)
 {
-    int idx   = juce::jlimit(0, 4, (int)std::round(apvts.getRawParameterValue("ratioIndex")->load()));
-    float ratio = kRatioValues[idx];
+    const int numSamples  = buffer.getNumSamples();
+    const int numChannels = buffer.getNumChannels();
+
+    const int ratioIdx = juce::jlimit(0, 4,
+        (int)std::round(apvts.getRawParameterValue("ratioIndex")->load()));
+    const int outIdx = juce::jlimit(0, 4,
+        (int)std::round(apvts.getRawParameterValue("outputLevel")->load()));
+
+    const float ratio      = kRatioValues[ratioIdx];
+    const float outputGain = kOutputGains[outIdx];
+    const float threshold  = juce::Decibels::decibelsToGain(kThresholdDb);
 
     if (ratio <= 0.0f)
-        return; // Off — pass through
-
-    const float threshold = juce::Decibels::decibelsToGain(kThresholdDb);
-
-    for (int s = 0; s < buffer.getNumSamples(); ++s)
     {
-        // Peak level across channels
-        float level = 0.0f;
-        for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
-            level = std::max(level, std::abs(buffer.getSample(ch, s)));
+        // Ratio = Off: bypass compression, still apply output level
+        buffer.applyGain(outputGain);
+        return;
+    }
 
-        // Branching envelope follower (attack faster than release)
-        float coeff = (level > envelope) ? attackCoeff : releaseCoeff;
-        envelope    = coeff * envelope + (1.0f - coeff) * level;
+    float* chL = numChannels > 0 ? buffer.getWritePointer(0) : nullptr;
+    float* chR = numChannels > 1 ? buffer.getWritePointer(1) : chL;
 
-        // Gain reduction above threshold
+    for (int s = 0; s < numSamples; ++s)
+    {
+        const float inL = chL[s];
+        const float inR = chR[s];
+
+        // --- Feed-forward peak detector (1176 topology) ---
+        // Track each channel independently, use the louder one for GR
+        const float peakL = std::abs(inL);
+        const float peakR = std::abs(inR);
+
+        envelopeL = (peakL > envelopeL)
+            ? attackCoeff  * envelopeL + (1.0f - attackCoeff)  * peakL
+            : releaseCoeff * envelopeL + (1.0f - releaseCoeff) * peakL;
+
+        envelopeR = (peakR > envelopeR)
+            ? attackCoeff  * envelopeR + (1.0f - attackCoeff)  * peakR
+            : releaseCoeff * envelopeR + (1.0f - releaseCoeff) * peakR;
+
+        const float detectedLevel = std::max(envelopeL, envelopeR);
+
+        // --- Gain reduction (hard knee, dB domain) ---
         float gain = 1.0f;
-        if (envelope > threshold)
+        if (detectedLevel > threshold)
         {
-            float overDb = juce::Decibels::gainToDecibels(envelope) - kThresholdDb;
+            // overDb > 0: how many dB above threshold
+            const float overDb = juce::Decibels::gainToDecibels(detectedLevel) - kThresholdDb;
+            // Compress: output = threshold + overDb/ratio
+            // Gain change = (overDb/ratio) - overDb = overDb*(1/ratio - 1)  (negative)
             gain = juce::Decibels::decibelsToGain(overDb * (1.0f / ratio - 1.0f));
         }
 
-        for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
-            buffer.setSample(ch, s, buffer.getSample(ch, s) * gain);
+        chL[s] = inL * gain * outputGain;
+        chR[s] = inR * gain * outputGain;
     }
 }
 
